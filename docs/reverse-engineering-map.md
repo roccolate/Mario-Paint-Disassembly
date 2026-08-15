@@ -63,7 +63,7 @@ The `0x250`-byte Music Tool blob is the best first interchange boundary for a ho
 
 ### Verified size and base
 
-`CODE_01EDDB` is marked in the original disassembly as a possible save routine. It reads from bank `$7E` beginning at `$7E4400` and processes exactly `0xBA52` bytes (47,698 bytes).
+`CODE_01EDDB` reads from bank `$7E` beginning at `$7E4400` and processes exactly `0xBA52` bytes (47,698 bytes).
 
 Therefore the uncompressed composition image is:
 
@@ -96,19 +96,32 @@ The animation/path interpretation at offset `0x5800` is high confidence because 
 
 ## Compression pipeline
 
-### Verified first stage
+### Verified first stage: LZ-style stream
 
-`CODE_01EDDB` walks the `0xBA52`-byte uncompressed image and emits an intermediate stream in `$7F0000`. It searches for previous matching sequences up to `0x12` bytes and emits either literals or back-reference-style records.
+`CODE_01EDDB` walks the `0xBA52`-byte uncompressed image and emits an intermediate stream. It searches previous data for matching sequences up to `0x12` bytes and emits literal runs or back-references. `CODE_01EF36` performs the corresponding expansion.
 
-This is an LZ-style dictionary stage. The exact on-disk token specification still needs to be written down before we give it a public format name.
+The serialized token layout is now documented and implemented by `tools/mpaint-save`:
 
-`CODE_01EF36` performs the corresponding expansion back into `$7E4400`.
+```text
+bit 15 clear: bits 0..14 = literal count, followed by literal bytes
+bit 15 set:   bits 0..7 = backwards distance, bits 8..14 = copy length
+```
 
-### Verified second stage structure
+Back-references may overlap the output buffer.
 
-After the first stage, `CODE_01F03A` constructs frequency/tree tables in bank `$7F` and emits a packed bitstream around `$7F2800`. `CODE_01F21D` reverses this stage during load.
+### Verified second stage: Huffman stream
 
-The structure is consistent with a Huffman-style entropy coding stage, but the exact serialized tree/bitstream format remains a research task.
+`CODE_01F03A` builds a 256-symbol Huffman tree and packs the first-stage bytes into a 16-bit MSB-first bitstream. `CODE_01F21D` reverses that stage during load.
+
+The serialized form is now documented and implemented by `tools/mpaint-save`:
+
+- the first `0x800` payload bytes are a tree of 16-bit child offsets;
+- a node whose left word is zero is a leaf and its right word is the byte value;
+- the packed stream follows the tree;
+- bit 15 of each little-endian 16-bit stream word is consumed first;
+- `$7007FE` stores the total meaningful Huffman payload size, including the `0x800`-byte tree.
+
+Padding can decode to extra first-stage bytes. The original LZ loader ignores those once the full `0xBA52`-byte composition has been reconstructed.
 
 ## SRAM save layout
 
@@ -119,15 +132,15 @@ $700000-$7007C1  special-stamp data / other metadata (incompletely mapped)
 $7007C2-$7007C3  additive payload checksum
 $7007C4-$7007C5  XOR payload checksum
 $7007C6-$7007FD  metadata not fully mapped
-$7007FE-$7007FF  first-stage compressed size/length value
+$7007FE-$7007FF  meaningful Huffman payload size
 $700800-$707FFF  fixed 0x7800-byte compressed composition payload
 ```
 
-The save routine initializes the additive checksum with `$7003` and the XOR checksum with `$2122`, folds each 16-bit payload word into those accumulators, then folds in the stored first-stage size before writing the checksum words.
+Both `CODE_00D1F2` (save) and `CODE_00D6D3` (load validation) initialize the additive checksum with `$7003` and the XOR checksum with `$2122`, fold every 16-bit word of the fixed `0x7800`-byte payload into those accumulators, then fold in the stored Huffman payload size. The additive path preserves the 65816 carry between `ADC` operations.
 
 ### Important unknown
 
-The first `0x800` bytes of SRAM are not fully documented. The current `SRAM_Map_MPAINT.asm` originally named only the special-stamp base. We should map this area experimentally before repurposing it or expanding the save format.
+The first `0x800` bytes of SRAM are not fully documented. The original `SRAM_Map_MPAINT.asm` named only the special-stamp base. We should map this area experimentally before repurposing it or expanding the save format.
 
 ## Animation state anchors
 
@@ -148,16 +161,17 @@ The exact public names and units of all three final words are not committed yet.
 
 The safest first host-side project format is based on the **uncompressed `0xBA52`-byte save image**, not on the compressed SRAM representation. A tool can preserve unknown bytes while exposing known sections.
 
-A first version can split it losslessly into:
+The read-only C codec currently exports:
 
 ```text
 project/
-  composition.bin             # complete 0xBA52-byte image for exact round-trip
-  animation-region.bin        # offset 0x0000..0x57FF
+  composition.bin             # complete 0xBA52-byte image
+  animation.bin               # offset 0x0000..0x57FF
   animation-path.bin          # offset 0x5800..0x5FFF
-  canvas-region.bin           # offset 0x6000..0xB7FF
-  music-tool.bin              # offset 0xB800..0xBA4F
+  canvas.bin                  # offset 0x6000..0xB7FF
+  music.bin                   # offset 0xB800..0xBA4F
   tail.bin                    # offset 0xBA50..0xBA51
+  manifest.json
 ```
 
 The complete `composition.bin` remains the source of truth until every field is decoded.
@@ -174,10 +188,16 @@ Reuse the existing mouse packet reader, cursor coordinates, OAM cursor rendering
 
 Do not try to reinterpret arbitrary Mario Paint bytes as a universal game engine. A future game layer should define new project sections (maps, objects, actors, events) and a small runtime while retaining Mario Paint as the editor frontend.
 
+## Completed gates
+
+1. Linux asset extraction and assembly wrappers reproduce the original ROM bit-perfect on Bellota.
+2. Symbolic RAM/SRAM documentation preserves the bit-perfect baseline.
+3. A C11 read-only decoder now has synthetic checksum, Huffman, LZ, overlap, and corruption tests.
+
 ## Next research tasks
 
-1. Prove the Linux wrappers still rebuild bit-perfect after the new symbolic RAM/SRAM labels.
-2. Write a host-side decoder for the two compression stages and round-trip one real `.srm` without modifying it.
+1. Validate the C decoder against one real 32 KiB Mario Paint `.srm` without modifying it.
+2. After real-save validation, implement a lossless host encoder and prove `composition -> .srm -> composition` round-trip.
 3. Map every byte from save offset `0xB800` through `0xBA51` and document the Music Tool blob.
 4. Map animation metadata at save offsets `0x5FF8-0x5FFF` with controlled edits.
 5. Map the first `0x800` bytes of SRAM and identify all stamp/save metadata.
