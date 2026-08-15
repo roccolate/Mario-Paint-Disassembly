@@ -58,7 +58,7 @@ echo
 echo 'Mesen will open now.'
 echo '1. If the Mario Paint cursor does not move, configure SNES controller port 2 as Mouse.'
 echo '2. Enter the drawing screen and make one visible mark so this is not an untouched save.'
-echo '3. Open Mario Paint's own Save/Load screen and perform an in-game SAVE.'
+echo "3. Open Mario Paint's own Save/Load screen and perform an in-game SAVE."
 echo '4. Return to the drawing screen, then close Mesen completely.'
 echo 'After Mesen closes, this script will locate the changed 32 KiB SRAM automatically.'
 echo
