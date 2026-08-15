@@ -1,7 +1,9 @@
-# Local ROM inputs and generated ROM outputs
+# Local ROM inputs, saves, archives, and generated ROM outputs
 MPAINT/*.sfc
 MPAINT/*.smc
+MPAINT/*.zip
 MPAINT/AsarScripts/MPAINT.sfc
+*.srm
 
 # Temporary files produced by the original Windows extractor
 MPAINT/AsarScripts/TEMP.sfc
