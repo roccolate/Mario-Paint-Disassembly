@@ -1,10 +1,11 @@
-# Mario Paint save codec (read-only)
+# Mario Paint save codec
 
-`mpaint-save` is a small C11 host-side decoder for the verified Mario Paint
-Japan/USA 32 KiB SRAM format.
+`mpaint-save` is a C11 host-side codec for the verified Mario Paint Japan/USA
+32 KiB SRAM format.
 
-The current milestone is intentionally read-only. It validates and decodes a
-save; it does not rewrite `.srm` files yet.
+It can validate and decode a save, and `mpaint-save-rebuild` can rebuild the
+composition payload into a **new** save while preserving the template save's
+non-composition SRAM data. Neither tool overwrites an existing output path.
 
 ## Build and test
 
@@ -13,7 +14,7 @@ make
 make test
 ```
 
-The default build uses strict warnings:
+The default build uses:
 
 ```text
 -std=c11 -O2 -Wall -Wextra -Werror -pedantic
@@ -21,32 +22,22 @@ The default build uses strict warnings:
 
 No external libraries are required.
 
-## Inspect a save
+## Inspect
 
 ```sh
-./mpaint-save inspect /path/to/MarioPaint.srm
+./mpaint-save inspect MarioPaint.srm
 ```
 
-A valid save reports:
+The save must be exactly 32768 bytes and pass the additive and XOR checksums
+used by the original game.
 
-- the stored Huffman payload size;
-- the number of bytes produced by the Huffman stage;
-- the number of LZ bytes consumed to reconstruct the composition;
-- stored and calculated additive/XOR checksums.
-
-The input must currently be exactly 32768 bytes. The tool never modifies the
-input save.
-
-## Decode a project
-
-The output directory must not already exist. This prevents accidental
-replacement of an earlier extraction.
+## Decode
 
 ```sh
-./mpaint-save decode /path/to/MarioPaint.srm /tmp/mpaint-project
+./mpaint-save decode MarioPaint.srm /tmp/mpaint-project
 ```
 
-The directory contains:
+The output directory must not already exist. It contains:
 
 ```text
 composition.bin       complete 0xBA52-byte uncompressed composition
@@ -54,38 +45,64 @@ animation.bin         offsets 0x0000..0x57FF
 animation-path.bin    offsets 0x5800..0x5FFF
 canvas.bin            offsets 0x6000..0xB7FF
 music.bin             offsets 0xB800..0xBA4F
-tail.bin              offsets 0xBA50..0xBA51 (meaning still unknown)
+tail.bin              offsets 0xBA50..0xBA51
 manifest.json          extraction metadata and section boundaries
 ```
 
-## Decoder correspondence
+## Rebuild a save
 
-The implementation follows the disassembly rather than a generic compression
-library:
+```sh
+./mpaint-save-rebuild \
+  MarioPaint-original.srm \
+  /tmp/mpaint-project/composition.bin \
+  /tmp/MarioPaint-rebuilt.srm
+```
 
-- `CODE_00D1F2` writes the fixed SRAM payload and checksums.
-- `CODE_01F21D` decodes the Huffman stage.
-- `CODE_01EF36` expands the first-stage LZ stream to `0xBA52` bytes.
-- `CODE_01EDDB` is the corresponding first-stage encoder used by the game.
-- `CODE_01F03A` is the corresponding Huffman encoder used by the game.
+The rebuild tool requires a fully decodable Mario Paint save as its template.
+It:
 
-The Huffman table occupies the first `0x800` bytes of the compressed payload.
-The remaining meaningful bytes are a 16-bit, MSB-first bitstream. The stored
-size at SRAM offset `0x07FE` is the total meaningful Huffman payload size.
+1. preserves the template SRAM outside the composition checksum/size/payload;
+2. LZ-encodes the `0xBA52`-byte composition;
+3. Huffman-encodes the LZ stream into the game's fixed `0x7800`-byte payload;
+4. writes the Huffman payload size and both original checksum formats;
+5. decodes the generated SRAM in memory and refuses to write it unless the
+   resulting composition is byte-identical to the requested input.
 
-The LZ stream is token based:
+The output path must not already exist.
 
-- a 16-bit value with bit 15 clear is a literal-run length, followed by that
-  many literal bytes;
-- a 16-bit value with bit 15 set is a back-reference, with the low byte as the
-  backwards distance and bits 8..14 as the copy length.
+The host encoder is **format compatible**, not intended to reproduce Nintendo's
+compressed bytes exactly. Different valid LZ choices, Huffman tie breaking, and
+unused payload bytes can produce a different `.srm` while decoding to the same
+composition. The hardware/emulator load test is therefore the compatibility
+gate; byte-identical compressed output is not.
 
-For safety, the public CLI validates checksums before attempting either decode
-stage.
+## Correspondence to the disassembly
 
-## Next gate
+- `CODE_00D1F2`: writes payload/checksums to SRAM.
+- `CODE_00D6D3`: validates those checksums on load.
+- `CODE_01EDDB`: original first-stage LZ encoder.
+- `CODE_01EF36`: original LZ decoder.
+- `CODE_01F03A`: original Huffman encoder.
+- `CODE_01F21D`: original Huffman decoder.
 
-The synthetic tests prove the host implementation is internally consistent and
-exercise checksum + Huffman + overlapping LZ copies end to end. The next gate
-is a real `.srm` produced by Mario Paint or an emulator. Only after that passes
-should an encoder or round-trip writer be added.
+The host LZ encoder follows the visible format constraints used by the original:
+maximum 18-byte matches, 8-bit backwards distance, and back-references only for
+matches of at least four bytes.
+
+## Safety model
+
+- `mpaint-save inspect` and `mpaint-save decode` never modify the input save.
+- `decode` refuses an existing output directory.
+- `mpaint-save-rebuild` refuses a template that cannot be fully decoded.
+- `mpaint-save-rebuild` refuses an existing output file.
+- generated saves are self-decoded and composition-compared before being
+  written.
+- `.srm` files are ignored by Git in this repository.
+
+## Remaining compatibility gate
+
+Synthetic tests now cover both directions: checksum validation, Huffman/LZ
+decode, LZ/Huffman encode, overlapping back-references, metadata preservation,
+and full `composition -> SRAM -> composition` round-trips. The remaining gate
+is a real `.srm` produced by Mario Paint, followed by loading the rebuilt save
+in an emulator or real SNES.

@@ -161,7 +161,7 @@ The exact public names and units of all three final words are not committed yet.
 
 The safest first host-side project format is based on the **uncompressed `0xBA52`-byte save image**, not on the compressed SRAM representation. A tool can preserve unknown bytes while exposing known sections.
 
-The read-only C codec currently exports:
+The C codec currently exports:
 
 ```text
 project/
@@ -174,7 +174,7 @@ project/
   manifest.json
 ```
 
-The complete `composition.bin` remains the source of truth until every field is decoded.
+`mpaint-save-rebuild` can encode a `composition.bin` into a **new** `.srm` while preserving the incompletely mapped metadata from a fully decodable Mario Paint template save. The complete `composition.bin` remains the source of truth until every field is decoded.
 
 ### 2. Music tooling
 
@@ -192,13 +192,15 @@ Do not try to reinterpret arbitrary Mario Paint bytes as a universal game engine
 
 1. Linux asset extraction and assembly wrappers reproduce the original ROM bit-perfect on Bellota.
 2. Symbolic RAM/SRAM documentation preserves the bit-perfect baseline.
-3. A C11 read-only decoder now has synthetic checksum, Huffman, LZ, overlap, and corruption tests.
+3. A C11 decoder has synthetic checksum, Huffman, LZ, overlap, and corruption tests.
+4. A separate C11 encoder/rebuild path has synthetic `composition -> SRAM -> composition` round-trip tests, Huffman coverage for all 256 byte symbols, and preservation checks for template SRAM metadata outside the fields intentionally replaced.
 
 ## Next research tasks
 
-1. Validate the C decoder against one real 32 KiB Mario Paint `.srm` without modifying it.
-2. After real-save validation, implement a lossless host encoder and prove `composition -> .srm -> composition` round-trip.
-3. Map every byte from save offset `0xB800` through `0xBA51` and document the Music Tool blob.
-4. Map animation metadata at save offsets `0x5FF8-0x5FFF` with controlled edits.
-5. Map the first `0x800` bytes of SRAM and identify all stamp/save metadata.
-6. Identify a minimal visual ROM edit for the first controlled modified build.
+1. Compile and run the published bidirectional codec on Bellota.
+2. Validate a real 32 KiB Mario Paint `.srm`: decode it, rebuild it from its own `composition.bin`, decode the rebuilt save, and require identical uncompressed composition bytes.
+3. Load the rebuilt `.srm` in Mario Paint on an emulator or real SNES to prove runtime compatibility.
+4. Map every byte from save offset `0xB800` through `0xBA51` and document the Music Tool blob.
+5. Map animation metadata at save offsets `0x5FF8-0x5FFF` with controlled edits.
+6. Map the first `0x800` bytes of SRAM and identify all stamp/save metadata.
+7. Identify a minimal visual ROM edit for the first controlled modified build.

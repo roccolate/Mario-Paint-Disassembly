@@ -33,8 +33,8 @@ make -C "$TOOL_DIR" CC="$CC_BIN" all || fail "codec build failed"
 
 if [[ -z "$SAVE_PATH" ]]; then
     echo
-    echo "Synthetic validation passed."
-    echo "Provide a 32 KiB Mario Paint .srm as argument to run the real-save gate."
+    echo "Synthetic decode/encode validation passed."
+    echo "Provide a 32 KiB Mario Paint .srm as argument to run the real-save compatibility gate."
     exit 0
 fi
 
@@ -45,9 +45,11 @@ printf '\n%s\n' '===== SAVE CODEC: REAL SAVE INSPECTION ====='
 
 WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/mpaint-save-codec.XXXXXX")" || fail "could not create temporary directory"
 PROJECT_DIR="$WORK_DIR/project"
+REBUILT_SAVE="$WORK_DIR/rebuilt.srm"
+REBUILT_PROJECT="$WORK_DIR/rebuilt-project"
 cleanup() {
     if [[ "${KEEP_OUTPUT:-0}" == "1" ]]; then
-        echo "Decoded output retained: $PROJECT_DIR"
+        echo "Validation output retained: $WORK_DIR"
         return
     fi
     rm -rf -- "$WORK_DIR"
@@ -74,6 +76,20 @@ cat \
 
 cmp -s "$PROJECT_DIR/composition.bin" "$WORK_DIR/rejoined.bin" || fail "section split does not reconstruct composition.bin"
 
+printf '\n%s\n' '===== SAVE CODEC: REBUILD FROM REAL TEMPLATE ====='
+"$TOOL_DIR/mpaint-save-rebuild" \
+    "$SAVE_PATH" \
+    "$PROJECT_DIR/composition.bin" \
+    "$REBUILT_SAVE" || fail "real save rebuild failed"
+
+printf '\n%s\n' '===== SAVE CODEC: DECODE REBUILT SAVE ====='
+"$TOOL_DIR/mpaint-save" decode "$REBUILT_SAVE" "$REBUILT_PROJECT" || fail "rebuilt save decode failed"
+
+cmp -s \
+    "$PROJECT_DIR/composition.bin" \
+    "$REBUILT_PROJECT/composition.bin" || fail "rebuilt save changed the uncompressed composition"
+
 echo
-echo "REAL-SAVE DECODE PASSED"
-echo "Sections reconstruct composition.bin byte-for-byte."
+echo "REAL-SAVE CODEC ROUND-TRIP PASSED"
+echo "original .srm -> composition -> rebuilt .srm -> composition is byte-identical"
+echo "Compressed .srm bytes are not expected to be identical."

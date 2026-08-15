@@ -30,4 +30,6 @@ MPAINT/Temp.txt
 # Host-side save codec build products
 tools/mpaint-save/*.o
 tools/mpaint-save/mpaint-save
+tools/mpaint-save/mpaint-save-rebuild
 tools/mpaint-save/test-mpaint-save
+tools/mpaint-save/test-mpaint-encode

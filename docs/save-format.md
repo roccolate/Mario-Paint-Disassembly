@@ -1,8 +1,8 @@
-# Mario Paint JU save format: verified decode path
+# Mario Paint JU save format: host codec model
 
-This document records the host-side model implemented by
-`tools/mpaint-save`. It distinguishes behavior directly visible in the
-Mario Paint disassembly from fields whose semantics are still unknown.
+This document records the host-side model implemented by `tools/mpaint-save`.
+It distinguishes behavior directly visible in the Mario Paint disassembly from
+fields whose semantics are still unknown.
 
 ## Scope
 
@@ -12,7 +12,9 @@ Verified target:
 - 32 KiB SRAM
 - original LoROM memory map
 
-The current host codec is read-only.
+The read path is implemented by `mpaint-save`. A separate explicit writer,
+`mpaint-save-rebuild`, rebuilds only the composition payload into a new `.srm`
+using a fully decodable Mario Paint save as the metadata template.
 
 ## SRAM layout used by the composition save
 
@@ -50,7 +52,8 @@ to low address. The additive calculation preserves the 65816 carry between
 accumulator XORs each payload word.
 
 Finally, the 16-bit meaningful Huffman size is folded into both accumulators.
-The results are stored at offsets `0x07C2` and `0x07C4`.
+The results are stored at offsets `0x07C2` and `0x07C4`. `CODE_00D6D3` performs
+the same calculation when validating a save before loading it.
 
 ## Compression pipeline
 
@@ -95,10 +98,16 @@ The bitstream is processed as 16-bit little-endian words. Within each word,
 bits are consumed from bit 15 down to bit 0. A zero selects the left child and
 a one selects the right child.
 
-The game may leave padding bits at the end. If the final padding reaches a
-leaf, the Huffman decoder can emit extra first-stage bytes. This is harmless in
-the original loader because the LZ stage stops after reconstructing exactly
-`0xBA52` bytes.
+The game may leave padding bits at the end. If final padding reaches a leaf,
+the Huffman decoder can emit extra first-stage bytes. This is harmless because
+the LZ stage stops after reconstructing exactly `0xBA52` bytes.
+
+The host encoder builds the same serialized tree shape: all 256 byte symbols
+have leaves inside the fixed `0x800`-byte table, internal nodes contain offsets
+to their children, and the root pair is stored at offsets `0x0000/0x0002`.
+Its tie breaking does not need to reproduce Nintendo's tree byte-for-byte; the
+serialized tree and bitstream only need to be mutually compatible with the
+original decoder.
 
 ### First-stage LZ representation
 
@@ -119,9 +128,10 @@ bits 8..14 = copy length
 bit 15     = 1
 ```
 
-Back-references may overlap the destination, so repeated patterns expand in the
-usual LZ manner. The original encoder searches for matches up to 18 bytes; the
-decoder representation itself has seven length bits.
+Back-references may overlap the destination. The original encoder searches for
+matches up to 18 bytes and only emits a back-reference when at least four bytes
+match. The host encoder uses the same 18-byte maximum, four-byte minimum, and
+8-bit backwards-distance limit.
 
 ## Uncompressed composition image
 
@@ -139,19 +149,45 @@ The boundaries at `0x5800`, `0x6000`, and `0xB800` are independently visible
 in save/load copies and runtime buffers. The final two bytes remain deliberately
 unnamed until their behavior is established.
 
+## Writer safety and compatibility model
+
+`mpaint-save-rebuild` does not construct the first `0x800` bytes of SRAM from
+scratch because that area still contains incompletely mapped stamps and other
+state. It instead requires an existing Mario Paint save that passes the full
+host decoder and preserves that template outside these replacement fields:
+
+```text
+0x07C2..0x07C5   checksums
+0x07FE..0x07FF   Huffman payload size
+0x0800..0x7FFF   compressed composition payload
+```
+
+The new payload region is zeroed before encoding, then the LZ stream, Huffman
+tree/bitstream, size and checksums are regenerated. Before the CLI writes an
+output file, it decodes the generated SRAM in memory and requires the resulting
+`0xBA52` bytes to equal the requested `composition.bin` byte-for-byte.
+
+A rebuilt `.srm` is **not expected to be byte-identical** to the original save.
+Valid LZ choices, Huffman tie breaking and unused payload bytes can differ while
+representing the same composition. Compatibility is defined by successful
+original-format decode and, ultimately, successful loading in Mario Paint.
+
 ## Validation strategy
 
-The C tests do not depend only on a second implementation of the same decoder.
-They include:
+The C tests cover:
 
 - fixed checksum vectors, including a carry-producing payload word;
 - literal-run LZ decoding;
 - overlapping LZ back-references;
-- a generated 256-symbol Huffman table;
-- a synthetic, checksum-valid 32 KiB SRAM image that passes the complete
-  checksum -> Huffman -> LZ pipeline and reconstructs all `0xBA52` bytes;
-- corruption detection after changing a checksum-covered payload byte.
+- a generated 256-symbol Huffman decode table;
+- a synthetic checksum-valid SRAM image through checksum -> Huffman -> LZ;
+- host LZ -> Huffman -> SRAM -> original-format host decode round-trips;
+- repeating and patterned full-size `0xBA52` compositions;
+- preservation of template metadata outside the fields intentionally rebuilt;
+- corruption detection in checksum-covered payload data.
 
-The remaining gate is a real Mario Paint `.srm`. Once that passes, the next
-safe milestone is an encoder capable of rebuilding a loadable save from the
-uncompressed project data.
+The remaining compatibility gate is a real `.srm` produced by Mario Paint or
+an emulator. The validation script will decode it, rebuild it from its own
+`composition.bin`, decode the rebuilt save again, and require both uncompressed
+compositions to be identical. After that, the rebuilt `.srm` should be loaded
+inside Mario Paint for the final runtime compatibility check.
