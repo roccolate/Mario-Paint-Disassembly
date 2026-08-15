@@ -1,5 +1,4 @@
 
-; LoROM SRAM base is $700000 for this framework.
 !SRAM_MPAINT_Global_SavedSpecialStampsGFX = $000000+!SRAMBankBaseAddress
 
 ; Save/load metadata immediately before the compressed composition payload.
