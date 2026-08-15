@@ -1,0 +1,26 @@
+# Local ROM inputs and generated ROM outputs
+MPAINT/*.sfc
+MPAINT/*.smc
+MPAINT/AsarScripts/MPAINT.sfc
+
+# Temporary files produced by the original Windows extractor
+MPAINT/AsarScripts/TEMP.sfc
+MPAINT/AsarScripts/TEMP*.asm
+MPAINT/AsarScripts/TEMP*.txt
+
+# Assets extracted from a user-supplied Mario Paint ROM
+MPAINT/Graphics/GFX_*.bin
+MPAINT/GarbageData/UNK_*.bin
+MPAINT/UnsortedData/PreComposedMusicToolSong*.bin
+MPAINT/SPC700/Music/*MusicData.bin
+MPAINT/SPC700/Samples/**/*.brr
+
+# Intermediate files produced while assembling
+MPAINT/SPC700/Engine.bin
+MPAINT/SPC700/TitleScreenSampleBank.bin
+MPAINT/SPC700/AudienceSampleBank.bin
+MPAINT/SPC700/ChantingSampleBank.bin
+MPAINT/SPC700/MainSampleBank.bin
+MPAINT/SPC700/MusicToolSampleBank.bin
+MPAINT/SPC700/FlySwattingSampleBank.bin
+MPAINT/Temp.txt
