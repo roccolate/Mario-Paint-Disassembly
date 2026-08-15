@@ -12,7 +12,7 @@
 !RAM_MPAINT_Global_PressedButtonsLoP1 = $00013A
 !RAM_MPAINT_Global_PressedButtonsHiP1 = !RAM_MPAINT_Global_HeldButtonsLoP1+$01
 !RAM_MPAINT_Global_PressedButtonsLoP2 = $00013C
-!RAM_MPAINT_Global_PressedButtonsHiP2 = !RAM_MPAINT_Global_HeldButtonsLoP2+$01
+!RAM_MPAINT_Global_PressedButtonsHiP2 = !RAM_MPAINT_Global_PressedButtonsLoP2+$01
 
 !RAM_MPAINT_Global_DisableButtonsLoP1 = $00014A
 !RAM_MPAINT_Global_DisableButtonsHiP1 = !RAM_MPAINT_Global_DisableButtonsLoP1+$01
