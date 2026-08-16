@@ -68,9 +68,16 @@ MpaintMusicSettings mpaint_music_decode_settings(const uint8_t blob[MPAINT_MUSIC
 uint16_t mpaint_music_event_raw(const uint8_t blob[MPAINT_MUSIC_BLOB_SIZE], unsigned step, unsigned slot);
 size_t mpaint_music_count_active_events(const uint8_t blob[MPAINT_MUSIC_BLOB_SIZE], unsigned active_steps_only);
 size_t mpaint_music_count_inactive_nonffff(const uint8_t blob[MPAINT_MUSIC_BLOB_SIZE]);
+size_t mpaint_music_count_changed_bytes(
+    const uint8_t before[MPAINT_MUSIC_BLOB_SIZE],
+    const uint8_t after[MPAINT_MUSIC_BLOB_SIZE]);
 int mpaint_music_validate_blob(const uint8_t blob[MPAINT_MUSIC_BLOB_SIZE], char *error, size_t error_size);
 void mpaint_music_print_summary(FILE *out, const uint8_t blob[MPAINT_MUSIC_BLOB_SIZE]);
 void mpaint_music_print_events(FILE *out, const uint8_t blob[MPAINT_MUSIC_BLOB_SIZE]);
 void mpaint_music_print_csv(FILE *out, const uint8_t blob[MPAINT_MUSIC_BLOB_SIZE]);
+size_t mpaint_music_print_diff(
+    FILE *out,
+    const uint8_t before[MPAINT_MUSIC_BLOB_SIZE],
+    const uint8_t after[MPAINT_MUSIC_BLOB_SIZE]);
 
 #endif

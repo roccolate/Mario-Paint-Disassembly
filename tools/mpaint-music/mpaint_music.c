@@ -171,6 +171,21 @@ size_t mpaint_music_count_inactive_nonffff(const uint8_t blob[MPAINT_MUSIC_BLOB_
     return count;
 }
 
+size_t mpaint_music_count_changed_bytes(
+    const uint8_t before[MPAINT_MUSIC_BLOB_SIZE],
+    const uint8_t after[MPAINT_MUSIC_BLOB_SIZE])
+{
+    size_t changed = 0;
+    size_t i;
+
+    for (i = 0; i < MPAINT_MUSIC_BLOB_SIZE; i++) {
+        if (before[i] != after[i]) {
+            changed++;
+        }
+    }
+    return changed;
+}
+
 int mpaint_music_validate_blob(const uint8_t blob[MPAINT_MUSIC_BLOB_SIZE], char *error, size_t error_size)
 {
     MpaintMusicSettings settings = mpaint_music_decode_settings(blob);
@@ -312,4 +327,80 @@ void mpaint_music_print_csv(FILE *out, const uint8_t blob[MPAINT_MUSIC_BLOB_SIZE
                 (unsigned)e.flags, e.highlight ? 1u : 0u, (unsigned)e.command);
         }
     }
+}
+
+static void print_diff_event_state(FILE *out, const char *label, MpaintMusicEvent event)
+{
+    if (event.empty) {
+        (void)fprintf(out, "  %s raw=0x%04" PRIX16 " inactive=yes canonical=%s\n",
+            label, event.raw, event.canonical_empty ? "yes" : "no");
+        return;
+    }
+
+    (void)fprintf(out,
+        "  %s raw=0x%04" PRIX16
+        " inactive=no instrument=%u sample=0x%02X pitch=%u flags=0x%02X command=0x%02X\n",
+        label, event.raw, (unsigned)event.instrument, (unsigned)event.sample_index,
+        (unsigned)event.pitch, (unsigned)event.flags, (unsigned)event.command);
+}
+
+size_t mpaint_music_print_diff(
+    FILE *out,
+    const uint8_t before[MPAINT_MUSIC_BLOB_SIZE],
+    const uint8_t after[MPAINT_MUSIC_BLOB_SIZE])
+{
+    static const struct {
+        size_t offset;
+        const char *name;
+    } settings[] = {
+        { MPAINT_MUSIC_OFF_SONG_END, "song_end" },
+        { MPAINT_MUSIC_OFF_LOOP, "loop" },
+        { MPAINT_MUSIC_OFF_TEMPO_RAW, "tempo_raw" },
+        { MPAINT_MUSIC_OFF_TEMPO_INCREMENT_LO, "tempo_increment_lo" },
+        { MPAINT_MUSIC_OFF_TEMPO_INCREMENT_HI, "tempo_increment_hi" },
+        { MPAINT_MUSIC_OFF_PLAYBACK_PHASE_LO, "playback_phase_lo" },
+        { MPAINT_MUSIC_OFF_PLAYBACK_PHASE_HI, "playback_phase_hi" },
+        { MPAINT_MUSIC_OFF_METER, "meter" }
+    };
+    size_t changed_words = 0;
+    size_t changed_bytes = mpaint_music_count_changed_bytes(before, after);
+    unsigned step;
+    unsigned slot;
+    size_t i;
+
+    for (step = 0; step < MPAINT_MUSIC_MAX_STEPS; step++) {
+        for (slot = 0; slot < MPAINT_MUSIC_SLOTS_PER_STEP; slot++) {
+            uint16_t before_raw = mpaint_music_event_raw(before, step, slot);
+            uint16_t after_raw = mpaint_music_event_raw(after, step, slot);
+            size_t offset;
+
+            if (before_raw == after_raw) {
+                continue;
+            }
+
+            offset = ((size_t)step * MPAINT_MUSIC_SLOTS_PER_STEP + slot) * MPAINT_MUSIC_EVENT_SIZE;
+            changed_words++;
+            (void)fprintf(out, "EVENT offset=0x%03zX step=%02u slot=%u voice=%u\n",
+                offset, step, slot, (unsigned)mpaint_music_spc_voice(slot));
+            print_diff_event_state(out, "before", mpaint_music_decode_event(before_raw));
+            print_diff_event_state(out, "after ", mpaint_music_decode_event(after_raw));
+        }
+    }
+
+    for (i = 0; i < sizeof(settings) / sizeof(settings[0]); i++) {
+        uint16_t before_raw = mpaint_music_read_u16le(before + settings[i].offset);
+        uint16_t after_raw = mpaint_music_read_u16le(after + settings[i].offset);
+
+        if (before_raw == after_raw) {
+            continue;
+        }
+
+        changed_words++;
+        (void)fprintf(out, "SETTING offset=0x%03zX %-20s before=0x%04" PRIX16 " after=0x%04" PRIX16 "\n",
+            settings[i].offset, settings[i].name, before_raw, after_raw);
+    }
+
+    (void)fprintf(out, "Changed bytes:            %zu\n", changed_bytes);
+    (void)fprintf(out, "Changed 16-bit fields:    %zu\n", changed_words);
+    return changed_words;
 }

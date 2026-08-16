@@ -13,10 +13,12 @@ static void usage(FILE *out)
         "  mpaint-music validate <music.bin>\n"
         "  mpaint-music events <music.bin>\n"
         "  mpaint-music csv <music.bin>\n"
+        "  mpaint-music diff <before-music.bin> <after-music.bin>\n"
         "  mpaint-music inspect-composition <composition.bin>\n"
         "  mpaint-music validate-composition <composition.bin>\n"
         "  mpaint-music events-composition <composition.bin>\n"
-        "  mpaint-music csv-composition <composition.bin>\n");
+        "  mpaint-music csv-composition <composition.bin>\n"
+        "  mpaint-music diff-composition <before-composition.bin> <after-composition.bin>\n");
 }
 
 static int read_exact(const char *path, size_t expected_size, uint8_t **data_out)
@@ -87,32 +89,64 @@ static int load_music_blob(const char *command, const char *path, uint8_t blob[M
     return 0;
 }
 
+static void print_diff_validation(const char *label, const uint8_t blob[MPAINT_MUSIC_BLOB_SIZE])
+{
+    char error[192];
+
+    if (mpaint_music_validate_blob(blob, error, sizeof(error)) == 0) {
+        (void)fprintf(stdout, "%s mapped-format validation: PASS\n", label);
+    } else {
+        (void)fprintf(stdout, "%s mapped-format validation: WARNING: %s\n", label, error);
+    }
+}
+
 int main(int argc, char **argv)
 {
     uint8_t blob[MPAINT_MUSIC_BLOB_SIZE];
+    uint8_t after_blob[MPAINT_MUSIC_BLOB_SIZE];
     char error[192];
     const char *command;
+    bool diff_command;
 
-    if (argc != 3) {
+    if (argc < 2) {
         usage(stderr);
         return 2;
     }
 
     command = argv[1];
+    diff_command = strcmp(command, "diff") == 0 || strcmp(command, "diff-composition") == 0;
+
+    if ((diff_command && argc != 4) || (!diff_command && argc != 3)) {
+        usage(stderr);
+        return 2;
+    }
+
     if (strcmp(command, "inspect") != 0 &&
         strcmp(command, "validate") != 0 &&
         strcmp(command, "events") != 0 &&
         strcmp(command, "csv") != 0 &&
+        strcmp(command, "diff") != 0 &&
         strcmp(command, "inspect-composition") != 0 &&
         strcmp(command, "validate-composition") != 0 &&
         strcmp(command, "events-composition") != 0 &&
-        strcmp(command, "csv-composition") != 0) {
+        strcmp(command, "csv-composition") != 0 &&
+        strcmp(command, "diff-composition") != 0) {
         usage(stderr);
         return 2;
     }
 
     if (load_music_blob(command, argv[2], blob) != 0) {
         return 1;
+    }
+
+    if (diff_command) {
+        if (load_music_blob(command, argv[3], after_blob) != 0) {
+            return 1;
+        }
+        print_diff_validation("Before", blob);
+        print_diff_validation("After ", after_blob);
+        (void)mpaint_music_print_diff(stdout, blob, after_blob);
+        return 0;
     }
 
     mpaint_music_print_summary(stdout, blob);

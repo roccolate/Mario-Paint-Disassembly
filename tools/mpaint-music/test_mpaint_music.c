@@ -35,10 +35,13 @@ static void init_canonical_blob(uint8_t blob[MPAINT_MUSIC_BLOB_SIZE])
 int main(void)
 {
     uint8_t blob[MPAINT_MUSIC_BLOB_SIZE];
+    uint8_t before[MPAINT_MUSIC_BLOB_SIZE];
+    uint8_t after[MPAINT_MUSIC_BLOB_SIZE];
     MpaintMusicSettings s;
     MpaintMusicEvent e;
     char error[160];
     unsigned steps = 0;
+    FILE *tmp;
 
     assert(MPAINT_MUSIC_EVENT_BYTES == MPAINT_MUSIC_MAX_STEPS *
         MPAINT_MUSIC_SLOTS_PER_STEP * MPAINT_MUSIC_EVENT_SIZE);
@@ -143,6 +146,22 @@ int main(void)
     assert(mpaint_music_count_active_events(blob, 1) == 1);
     assert(mpaint_music_count_active_events(blob, 0) == 2);
     assert(mpaint_music_validate_blob(blob, error, sizeof(error)) == 0);
+
+    init_canonical_blob(before);
+    memcpy(after, before, sizeof(after));
+    assert(mpaint_music_count_changed_bytes(before, after) == 0);
+    tmp = tmpfile();
+    assert(tmp != NULL);
+    assert(mpaint_music_print_diff(tmp, before, after) == 0);
+    assert(fclose(tmp) == 0);
+
+    write_u16le(after + 0, 0x0205);
+    write_u16le(after + MPAINT_MUSIC_OFF_LOOP, 1);
+    assert(mpaint_music_count_changed_bytes(before, after) == 3);
+    tmp = tmpfile();
+    assert(tmp != NULL);
+    assert(mpaint_music_print_diff(tmp, before, after) == 2);
+    assert(fclose(tmp) == 0);
 
     puts("PASS: Mario Paint Music Tool format tests");
     return 0;
