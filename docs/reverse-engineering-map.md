@@ -4,7 +4,7 @@ This document records high-value anchors for extending Mario Paint without prete
 
 ## Confidence levels
 
-- **Verified:** directly visible in code/data flow or reproduced by the Linux baseline.
+- **Verified:** directly visible in code/data flow or reproduced by the Linux baseline/host validators.
 - **Strong inference:** multiple code paths support the interpretation, but fields are not fully decoded yet.
 - **Unknown:** deliberately left unnamed until more evidence exists.
 
@@ -55,9 +55,21 @@ Evidence:
 - the save path copies `$09E4..$0C33` to `$7EFC00` before compression;
 - the load path copies the same `0x250` bytes back from `$7EFC00` to `$09E4`.
 
-### Strong inference
+The read-side format is now mapped as:
 
-The `0x250`-byte Music Tool blob is the best first interchange boundary for a host-side composer. We do not yet need to decode every note field to round-trip it losslessly.
+```text
+0x000-0x23F  96 steps * 3 uint16 event slots
+0x240        song-end coordinate
+0x242        loop flag
+0x244        raw tempo
+0x246-0x249  derived tempo increment
+0x24A-0x24D  playback phase accumulator
+0x24E        meter/grouping selector
+```
+
+Each event slot carries an inactive bit, an editor pitch row, an instrument ID, and a transient highlight bit. The three slots route to SPC/DSP voices 5, 6, and 7. Instrument IDs 0..14 map through the original SPC engine to BRR sample indices.
+
+This model passed `tools/mpaint-music` validation against both the real Bellota SRAM and all three Nintendo pre-composed songs. Non-`FFFF` inactive words are normal persisted data and must be preserved. See `docs/music-tool-format.md` for the field-level map.
 
 ## Save image before compression
 
@@ -100,7 +112,7 @@ The animation/path interpretation at offset `0x5800` is high confidence because 
 
 `CODE_01EDDB` walks the `0xBA52`-byte uncompressed image and emits an intermediate stream. It searches previous data for matching sequences up to `0x12` bytes and emits literal runs or back-references. `CODE_01EF36` performs the corresponding expansion.
 
-The serialized token layout is now documented and implemented by `tools/mpaint-save`:
+The serialized token layout is documented and implemented by `tools/mpaint-save`:
 
 ```text
 bit 15 clear: bits 0..14 = literal count, followed by literal bytes
@@ -113,7 +125,7 @@ Back-references may overlap the output buffer.
 
 `CODE_01F03A` builds a 256-symbol Huffman tree and packs the first-stage bytes into a 16-bit MSB-first bitstream. `CODE_01F21D` reverses that stage during load.
 
-The serialized form is now documented and implemented by `tools/mpaint-save`:
+The serialized form is documented and implemented by `tools/mpaint-save`:
 
 - the first `0x800` payload bytes are a tree of 16-bit child offsets;
 - a node whose left word is zero is a leaf and its right word is the byte value;
@@ -178,7 +190,7 @@ project/
 
 ### 2. Music tooling
 
-Treat the `0x250`-byte Music Tool blob as an atomic lossless format first. Then decode note placement, instrument IDs, tempo/settings, and SPC commands incrementally. This avoids blocking the project on a complete SPC700 rewrite.
+The `0x250`-byte blob is no longer opaque on the read side. `tools/mpaint-music` exposes settings and event slots while preserving raw words. The next safe step is controlled write-side observation, not immediate normalization or rewriting.
 
 ### 3. New editor screens
 
@@ -194,13 +206,14 @@ Do not try to reinterpret arbitrary Mario Paint bytes as a universal game engine
 2. Symbolic RAM/SRAM documentation preserves the bit-perfect baseline.
 3. A C11 decoder has synthetic checksum, Huffman, LZ, overlap, and corruption tests.
 4. A separate C11 encoder/rebuild path has synthetic `composition -> SRAM -> composition` round-trip tests, Huffman coverage for all 256 byte symbols, and preservation checks for template SRAM metadata outside the fields intentionally replaced.
+5. A real 32 KiB Mario Paint SRAM decodes and survives host `composition -> rebuilt SRAM -> composition` round-trip with byte-identical uncompressed composition.
+6. The Music Tool read-side model passes synthetic tests, the real SRAM `music.bin`, and all three Nintendo pre-composed song blobs.
 
 ## Next research tasks
 
-1. Compile and run the published bidirectional codec on Bellota.
-2. Validate a real 32 KiB Mario Paint `.srm`: decode it, rebuild it from its own `composition.bin`, decode the rebuilt save, and require identical uncompressed composition bytes.
-3. Load the rebuilt `.srm` in Mario Paint on an emulator or real SNES to prove runtime compatibility.
-4. Map every byte from save offset `0xB800` through `0xBA51` and document the Music Tool blob.
-5. Map animation metadata at save offsets `0x5FF8-0x5FFF` with controlled edits.
-6. Map the first `0x800` bytes of SRAM and identify all stamp/save metadata.
-7. Identify a minimal visual ROM edit for the first controlled modified build.
+1. Load the host-rebuilt `.srm` in Mario Paint/MesenCE or hardware to prove runtime compatibility.
+2. Perform controlled one-variable Music Tool edits and diff only the 0x250-byte blob.
+3. Map the 15 Music Tool UI instrument names/icons to verified instrument IDs and BRR indices.
+4. Map animation metadata at save offsets `0x5FF8-0x5FFF` with controlled edits.
+5. Map the first `0x800` bytes of SRAM and identify all stamp/save metadata.
+6. Identify a minimal visual ROM edit for the first controlled modified build.

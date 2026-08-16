@@ -37,7 +37,7 @@ Status: **in progress**.
 Current priority order:
 
 1. save image and SRAM layout — host codec mapped and real-save round-trip passed;
-2. Music Tool data format and SPC command bridge — current active research;
+2. Music Tool data format and SPC command bridge — read-side model validated against real/Nintendo data;
 3. animation/path representation;
 4. canvas/tile representation;
 5. mouse/UI state machine.
@@ -104,27 +104,30 @@ No semantic export may destroy unknown or latent original data.
 
 ## Phase 5 - Music Tool expansion
 
-Status: **format mapping in progress on `research/music-tool-format`**.
+Status: **read-side model validated on `research/music-tool-format`; controlled write-side experiments are next**.
 
-Verified starting model:
+Verified model:
 
 - 0x250-byte Music Tool blob;
 - first 0x240 bytes = 96 timeline steps × 3 event slots × 16-bit event words;
 - three simultaneous slots are routed to SPC voices 5, 6 and 7;
 - event words expose instrument ID, pitch row, inactive state and a transient UI highlight bit;
 - normal editor instrument IDs map to BRR sample indices through the original SPC engine;
-- remaining 0x10 bytes hold song end, loop, tempo/derived timing, playback phase and meter/grouping state.
+- remaining 0x10 bytes hold song end, loop, tempo/derived timing, playback phase and meter/grouping state;
+- real-save Music Tool data passes the mapped-format validator;
+- all three Nintendo pre-composed songs pass the same validator;
+- Song 3 independently confirms the mapped 80-step song-end conversion;
+- non-`FFFF` inactive event words are normal persisted data and must be preserved.
 
 Order of work:
 
-1. validate the mapped model against the real Bellota save and all three Nintendo pre-composed songs;
-2. controlled one-variable save diffs for note, instrument, loop, tempo, meter and song end;
-3. map instrument icons/names without guessing;
-4. define a human-readable lossless representation;
-5. add a writer only after read-side semantics are stable;
-6. host-side note/instrument/tempo editing;
-7. investigate custom BRR sample banks and expanded limits;
-8. only then consider extending the in-ROM Music Tool UI.
+1. controlled one-variable save diffs for note, instrument, loop, tempo, meter and song end;
+2. map instrument icons/names without guessing;
+3. define a human-readable lossless representation;
+4. add a writer only after read-side and controlled write-side semantics are stable;
+5. host-side note/instrument/tempo editing;
+6. investigate custom BRR sample banks and expanded limits;
+7. only then consider extending the in-ROM Music Tool UI.
 
 ## Phase 6 - First controlled ROM modification
 
@@ -204,7 +207,7 @@ Practical progression:
 - `main`: preservation/upstream-compatible baseline until a deliberate integration decision;
 - `research/linux-baseline`: reproducibility and early semantic anchors;
 - `feat/save-codec-c`: host save codec work;
-- `research/music-tool-format`: read-side Music Tool mapping;
+- `research/music-tool-format`: read-side Music Tool mapping and controlled write-side format research;
 - new feature branches only after their underlying format/routine is validated.
 
 Do not commit original ROM images, extracted copyrighted assets, or real `.srm` files.
@@ -213,7 +216,7 @@ Do not commit original ROM images, extracted copyrighted assets, or real `.srm` 
 
 Current next gates are:
 
-1. validate `tools/mpaint-music` against the real Mario Paint SRAM already produced on Bellota;
-2. validate it against all three extracted pre-composed Music Tool song blobs;
-3. use controlled in-game edits to isolate any fields that differ from the static model;
-4. separately load the host-rebuilt `.srm` in Mario Paint to close runtime save compatibility.
+1. make one controlled Music Tool change at a time in Mario Paint and diff the resulting 0x250-byte blob;
+2. separately load the host-rebuilt `.srm` in Mario Paint/MesenCE to close runtime save compatibility;
+3. map the 15 Music Tool instrument icons/names to their already-verified IDs and BRR indices;
+4. only then design the structured Music Tool writer.

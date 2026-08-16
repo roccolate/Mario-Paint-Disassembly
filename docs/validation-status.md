@@ -47,14 +47,42 @@ No real `.srm` or copyrighted extracted asset is committed to the repository.
 
 ## Music Tool research
 
-**Static mapping in progress on `research/music-tool-format`.**
+**Read-side mapped-format validation passed on Bellota against both a real SRAM and all three Nintendo pre-composed songs.**
 
-Current verified boundary:
+Validated blob model:
 
 ```text
 0x250-byte blob
   0x000-0x23F  96 steps * 3 uint16 event slots
-  0x240-0x24F  song length / loop / tempo / phase / meter fields
+  0x240        song-end coordinate
+  0x242        loop flag
+  0x244        raw tempo control
+  0x246-0x249  derived 32-bit tempo increment
+  0x24A-0x24D  32-bit playback phase
+  0x24E        meter/grouping selector
 ```
 
-A read-only C inspector and synthetic tests are being introduced before any structured music writer. Real-save `music.bin` and the three extracted Nintendo pre-composed song blobs are the next data gates.
+The real SRAM decoded cleanly through the existing save codec. Its Music Tool section matched the default empty-song model:
+
+```text
+song end               0x0310 = 96 steps
+loop                    off
+tempo raw               0x0050
+tempo increment         0x1270992E (matched derivation)
+playback phase          0x00000000
+meter                   1 = 4 beats/group
+active events           0
+mapped-format gate      PASS
+```
+
+All three extracted Nintendo-authored pre-composed blobs passed the same validator:
+
+```text
+song 1: 96 steps, loop off, tempo 0x006F, 163 active events
+song 2: 96 steps, loop on,  tempo 0x002E, 129 active events, phase 0xBB8474D9
+song 3: 80 steps, loop on,  tempo 0x0050, 157 active events
+```
+
+For each pre-composed song, `active events + inactive non-FFFF words = 288`, exactly the full 96-by-3 event matrix. This confirms that non-`FFFF` inactive event words are normal persisted data and must be preserved. Song 3 also has no active events beyond its mapped 80-step end.
+
+The next Music Tool gate is controlled one-variable editing in Mario Paint: add/remove one note, change one instrument, toggle loop, alter tempo, meter, and song end, then diff only the 0x250-byte blob. A structured writer remains deferred until those write-side semantics are isolated.

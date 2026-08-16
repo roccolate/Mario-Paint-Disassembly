@@ -33,3 +33,8 @@ tools/mpaint-save/mpaint-save
 tools/mpaint-save/mpaint-save-rebuild
 tools/mpaint-save/test-mpaint-save
 tools/mpaint-save/test-mpaint-encode
+
+# Host-side Music Tool inspector build products
+tools/mpaint-music/*.o
+tools/mpaint-music/mpaint-music
+tools/mpaint-music/test-mpaint-music

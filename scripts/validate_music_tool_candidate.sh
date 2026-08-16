@@ -10,6 +10,11 @@ REPO_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 MUSIC_TOOL="$REPO_ROOT/tools/mpaint-music/mpaint-music"
 SAVE_TOOL="$REPO_ROOT/tools/mpaint-save/mpaint-save"
 
+cleanup() {
+    make -C "$REPO_ROOT/tools/mpaint-music" clean >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
+
 fail() {
     echo "ERROR: $*" >&2
     exit 1
