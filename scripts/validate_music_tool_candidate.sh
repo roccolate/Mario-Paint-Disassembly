@@ -19,6 +19,7 @@ run_music_file() {
     local path="$1"
     local size="$2"
     local command=""
+    local rc=0
 
     case "$size" in
         592)
@@ -28,27 +29,33 @@ run_music_file() {
             command="validate-composition"
             ;;
         *)
-            fail "unsupported input size for $path: $size bytes"
+            echo "ERROR: unsupported input size for $path: $size bytes" >&2
+            return 1
             ;;
     esac
 
     echo
     echo "===== MUSIC TOOL INPUT: $path ====="
-    stat -c '%n %s bytes' "$path"
+    stat -c '%n %s bytes' "$path" || return 1
 
-    "$MUSIC_TOOL" "$command" "$path" || fail "Music Tool mapped-format validation failed: $path"
+    if ! "$MUSIC_TOOL" "$command" "$path"; then
+        echo "ERROR: Music Tool mapped-format validation failed: $path" >&2
+        rc=1
+    fi
 
     if [[ "$command" == "validate" ]]; then
-        "$MUSIC_TOOL" inspect "$path" || fail "Music Tool inspection failed: $path"
+        "$MUSIC_TOOL" inspect "$path" || rc=1
         if [[ "${SHOW_EVENTS:-0}" == "1" ]]; then
-            "$MUSIC_TOOL" events "$path" || fail "Music Tool event dump failed: $path"
+            "$MUSIC_TOOL" events "$path" || rc=1
         fi
     else
-        "$MUSIC_TOOL" inspect-composition "$path" || fail "Music Tool composition inspection failed: $path"
+        "$MUSIC_TOOL" inspect-composition "$path" || rc=1
         if [[ "${SHOW_EVENTS:-0}" == "1" ]]; then
-            "$MUSIC_TOOL" events-composition "$path" || fail "Music Tool composition event dump failed: $path"
+            "$MUSIC_TOOL" events-composition "$path" || rc=1
         fi
     fi
+
+    return "$rc"
 }
 
 echo '===== MUSIC TOOL: CLEAN BUILD + TESTS ====='
@@ -64,9 +71,20 @@ if [[ "$#" -eq 0 ]]; then
     exit 0
 fi
 
+FAILURES=0
+
 for path in "$@"; do
-    [[ -f "$path" ]] || fail "input not found: $path"
-    size="$(stat -c '%s' "$path")" || fail "could not stat: $path"
+    if [[ ! -f "$path" ]]; then
+        echo "ERROR: input not found: $path" >&2
+        FAILURES=$((FAILURES + 1))
+        continue
+    fi
+
+    size="$(stat -c '%s' "$path")" || {
+        echo "ERROR: could not stat: $path" >&2
+        FAILURES=$((FAILURES + 1))
+        continue
+    }
 
     if [[ "$size" == "32768" ]]; then
         echo
@@ -76,15 +94,26 @@ for path in "$@"; do
         fi
         tmp="$(mktemp -d "${TMPDIR:-/tmp}/mpaint-music-srm.XXXXXX")" || fail "could not create temp directory"
         if ! "$SAVE_TOOL" decode "$path" "$tmp/project"; then
+            echo "ERROR: could not decode Mario Paint SRAM: $path" >&2
             rm -rf -- "$tmp"
-            fail "could not decode Mario Paint SRAM: $path"
+            FAILURES=$((FAILURES + 1))
+            continue
         fi
-        run_music_file "$tmp/project/music.bin" 592
+        if ! run_music_file "$tmp/project/music.bin" 592; then
+            FAILURES=$((FAILURES + 1))
+        fi
         rm -rf -- "$tmp"
     else
-        run_music_file "$path" "$size"
+        if ! run_music_file "$path" "$size"; then
+            FAILURES=$((FAILURES + 1))
+        fi
     fi
 done
 
 echo
+if [[ "$FAILURES" -ne 0 ]]; then
+    echo "MUSIC TOOL DATA GATES: $FAILURES input(s) failed"
+    exit 1
+fi
+
 echo 'MUSIC TOOL DATA GATES PASSED'

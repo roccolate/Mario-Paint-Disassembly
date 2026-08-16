@@ -81,6 +81,18 @@ SPC command   = 0x35
 
 The three event slots are delivered through the queue/port paths handled by `CODE_01D328`, `CODE_01D348`, and `CODE_01D368`. In Music Tool mode, the SPC engine processes those three commands through `CODE_248F`, `CODE_24A0`, and `CODE_244B`.
 
+### SPC voice assignment
+
+The three saved event slots are also bound to fixed SPC/DSP voices. `CODE_248F`, `CODE_24A0`, and `CODE_244B` use voice-mask bits `0x20`, `0x40`, and `0x80`; the corresponding engine cleanup routines `CODE_1236`, `CODE_1244`, and `CODE_1252` explicitly clear/set voice-state bits 5, 6, and 7. Therefore, using zero-based DSP voice numbering:
+
+```text
+saved slot 0 -> SPC voice 5
+saved slot 1 -> SPC voice 6
+saved slot 2 -> SPC voice 7
+```
+
+This does **not** make the slots fixed instruments. Any of the 15 Music Tool instrument IDs can be placed in any slot; the slot selects the playback voice used for that simultaneous event.
+
 ## Instrument ID to BRR sample index
 
 `CODE_24B1` extracts the high command nibble, subtracts one, and indexes `DATA_254C`. For the 15 editor instrument IDs the mapping is:
@@ -169,5 +181,4 @@ Validation currently checks only behavior that has a mapped editor path: song-en
 2. Run it against all three pre-composed 0x250-byte song blobs.
 3. In Mario Paint, make one controlled change at a time (one note, one instrument, loop, tempo, meter, song end), save, and diff only the Music Tool blob.
 4. Trace the 15 UI instrument IDs to icon/name assets without guessing names.
-5. Confirm whether the three Music Tool command handlers correspond directly to SPC voices 5, 6, and 7; their masks are `0x20`, `0x40`, and `0x80`.
-6. Only after those gates, add a writer for structured music events/settings.
+5. Only after those gates, add a writer for structured music events/settings.

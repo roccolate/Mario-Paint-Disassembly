@@ -62,6 +62,7 @@ uint16_t mpaint_music_read_u16le(const uint8_t *p);
 uint32_t mpaint_music_expected_tempo_increment(uint16_t tempo_raw);
 bool mpaint_music_song_end_to_steps(uint16_t song_end, unsigned *steps_out);
 uint8_t mpaint_music_sample_index(uint8_t instrument);
+uint8_t mpaint_music_spc_voice(unsigned slot);
 MpaintMusicEvent mpaint_music_decode_event(uint16_t raw);
 MpaintMusicSettings mpaint_music_decode_settings(const uint8_t blob[MPAINT_MUSIC_BLOB_SIZE]);
 uint16_t mpaint_music_event_raw(const uint8_t blob[MPAINT_MUSIC_BLOB_SIZE], unsigned step, unsigned slot);

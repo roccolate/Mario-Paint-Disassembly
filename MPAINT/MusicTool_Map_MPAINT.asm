@@ -20,3 +20,8 @@
 
 !MPAINT_MusicTool_InactiveEventBit = $8000
 !MPAINT_MusicTool_CursorHighlightBit = $2000
+
+; DSP voice assignment used by the three Music Tool event slots (zero-based).
+!MPAINT_MusicTool_Slot0SPCVoice = 5
+!MPAINT_MusicTool_Slot1SPCVoice = 6
+!MPAINT_MusicTool_Slot2SPCVoice = 7

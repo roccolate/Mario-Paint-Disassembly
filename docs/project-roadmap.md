@@ -1,65 +1,90 @@
 # Project roadmap
 
-The project goal is to turn the bit-perfect Mario Paint disassembly into a controlled SNES creation environment without losing the ability to reproduce the original game. The roadmap intentionally separates preservation/reverse engineering from new game-creation features.
+The goal is to turn the bit-perfect Mario Paint disassembly into a controlled SNES creation environment while preserving a reproducible original baseline. Preservation, format research, host tooling, and new runtime features remain separate milestones.
 
-## Phase 0 - Reproducible baseline
+## Phase 0 - Reproducible ROM baseline
 
-Status: **complete on Bellota**.
+Status: **complete and revalidated on Bellota**.
 
-Acceptance criteria:
+Acceptance evidence:
 
-- verified headerless Japan/USA ROM;
+- verified headerless Mario Paint Japan/USA ROM;
 - native Linux asset extraction;
 - native Linux Asar build;
-- rebuilt ROM has the same size, MD5, SHA256, checksum, and byte content as the original.
+- 1,048,576-byte rebuilt ROM;
+- matching MD5 and SHA-256;
+- byte-identical `cmp` against the verified original.
 
-The observed baseline is documented in `docs/linux-baseline.md`.
+See `docs/linux-baseline.md` and `docs/validation-status.md`.
 
-## Phase 1 - Linux toolchain in the repository
+## Phase 1 - Linux toolchain
 
-Status: **implemented on `research/linux-baseline`, awaiting local re-validation**.
+Status: **complete and locally validated**.
 
-Deliverables:
+Repository tooling includes:
 
 - `MPAINT/AsarScripts/ExtractAssets.sh`
 - `MPAINT/Assemble_MPAINT.sh`
 - `scripts/verify_linux_baseline.sh`
-- `.gitignore` rules that prevent accidental ROM/extracted-asset commits
+- Git ignore rules for ROMs, extracted assets, save files and generated intermediates.
 
-Policy: the original Windows `.bat` files remain untouched for reference.
+The original Windows batch files remain as preservation/reference material.
 
-## Phase 2 - Semantic reverse-engineering map
+## Phase 2 - Semantic reverse engineering
 
 Status: **in progress**.
 
-Initial anchors are in `docs/reverse-engineering-map.md` and symbolic RAM/SRAM definitions.
+Current priority order:
 
-Priority order:
-
-1. save image and SRAM layout;
-2. Music Tool data format and SPC command bridge;
+1. save image and SRAM layout — host codec mapped and real-save round-trip passed;
+2. Music Tool data format and SPC command bridge — current active research;
 3. animation/path representation;
 4. canvas/tile representation;
 5. mouse/UI state machine.
 
-The purpose is not to rename every `CODE_xxxxxx` label. We only promote names when a routine or field has enough evidence to be stable.
+The project does not attempt to rename every `CODE_xxxxxx` label. Names are promoted only when runtime behavior supports them.
 
-## Phase 3 - Host-side project round-trip
+## Phase 3 - Host-side save/project round-trip
 
-Goal: produce a lossless project representation independent of the compressed SRAM image.
+Status: **host-format round-trip implemented and validated with a real Mario Paint save**.
 
-Preferred durable implementation: a small C command-line tool, keeping the SNES runtime in 65C816/SPC700 assembly.
-
-Proposed first commands:
+Current C tools:
 
 ```text
-mpaint inspect-rom <rom.sfc>
-mpaint decode-save <save.srm> <project-dir>
-mpaint encode-save <project-dir> <save.srm>
-mpaint verify-save <original.srm> <rebuilt.srm>
+tools/mpaint-save/mpaint-save
+tools/mpaint-save/mpaint-save-rebuild
 ```
 
-First project representation:
+The decoder produces a lossless project directory containing the authoritative full composition plus split regions. The writer rebuilds the composition payload into a new `.srm` while preserving incompletely mapped SRAM metadata from a validated template save.
+
+Real-save gate observed on Bellota:
+
+```text
+original .srm
+    -> checksum validation
+    -> Huffman decode
+    -> LZ decode
+    -> 0xBA52-byte composition.bin
+    -> LZ encode
+    -> Huffman encode
+    -> rebuilt .srm
+    -> decode again
+    -> composition.bin byte-identical to original
+```
+
+The compressed `.srm` itself is **not expected to be byte-identical** because multiple valid LZ/Huffman representations can encode the same composition.
+
+Remaining runtime gate for this phase:
+
+- load `rebuilt.srm` in Mario Paint/MesenCE and confirm the original 65C816 loader accepts it and the composition appears correctly.
+
+## Phase 4 - Lossless semantic project model
+
+Goal: replace opaque subregions progressively with reversible typed representations while keeping `composition.bin` authoritative until every conversion is lossless.
+
+Current first target: Music Tool.
+
+Proposed durable project shape:
 
 ```text
 project/
@@ -68,72 +93,71 @@ project/
   animation-region.bin
   animation-path.bin
   canvas-region.bin
-  music-tool.bin
+  music.bin
   tail.bin
+  music/
+    events.csv
+    settings.txt
 ```
 
-`composition.bin` remains authoritative until every sub-format is understood. Splitting files must be reversible with no information loss.
-
-### Phase 3 acceptance gate
-
-Given a real Mario Paint `.srm`:
-
-```text
-.srm -> decompress -> project -> recompress -> .srm
-```
-
-must reproduce the original save byte-for-byte before any editing features are added.
-
-## Phase 4 - First controlled ROM modification
-
-Goal: prove the modified build workflow without coupling it to a large feature.
-
-Good candidates:
-
-- one palette entry;
-- one tilemap entry;
-- one harmless UI value;
-- a small isolated cursor/tool behavior change.
-
-Acceptance gate:
-
-- modified ROM boots normally;
-- intended change is observable;
-- baseline branch remains bit-perfect;
-- binary diff is understood and bounded.
+No semantic export may destroy unknown or latent original data.
 
 ## Phase 5 - Music Tool expansion
 
-Start from the existing `0x250`-byte song/settings blob and existing SPC700 engine.
+Status: **format mapping in progress on `research/music-tool-format`**.
 
-Order:
+Verified starting model:
 
-1. document all `0x250` bytes;
-2. convert the blob to a human-readable intermediate representation;
-3. convert that representation back losslessly;
-4. expose note/instrument/tempo editing on the host;
-5. extend the in-ROM editor only after the data model is stable;
-6. investigate custom BRR sample banks and expanded song limits.
+- 0x250-byte Music Tool blob;
+- first 0x240 bytes = 96 timeline steps × 3 event slots × 16-bit event words;
+- three simultaneous slots are routed to SPC voices 5, 6 and 7;
+- event words expose instrument ID, pitch row, inactive state and a transient UI highlight bit;
+- normal editor instrument IDs map to BRR sample indices through the original SPC engine;
+- remaining 0x10 bytes hold song end, loop, tempo/derived timing, playback phase and meter/grouping state.
 
-Possible later exports are engine-specific ASM/binary and SPC snapshots. A universal SNES music format is not a requirement.
+Order of work:
 
-## Phase 6 - Graphics and animation authoring
+1. validate the mapped model against the real Bellota save and all three Nintendo pre-composed songs;
+2. controlled one-variable save diffs for note, instrument, loop, tempo, meter and song end;
+3. map instrument icons/names without guessing;
+4. define a human-readable lossless representation;
+5. add a writer only after read-side semantics are stable;
+6. host-side note/instrument/tempo editing;
+7. investigate custom BRR sample banks and expanded limits;
+8. only then consider extending the in-ROM Music Tool UI.
 
-Build on the existing canvas, stamp, animation-cell, path, tilemap, palette, DMA, mouse, and cursor systems.
+## Phase 6 - First controlled ROM modification
 
-Host-side capabilities can arrive before ROM UI changes:
+Goal: prove that a deliberate behavioral/visual modification can coexist with the preservation baseline.
+
+Good candidates remain small and observable:
+
+- one palette entry;
+- one tilemap entry;
+- one isolated Music Tool UI value;
+- one cursor/tool behavior change.
+
+Acceptance:
+
+- modified ROM boots normally;
+- intended change is observable;
+- binary diff is bounded and understood;
+- preservation baseline branch remains bit-perfect.
+
+## Phase 7 - Graphics and animation authoring
+
+Host-side capabilities can precede ROM UI changes:
 
 - canvas export/import;
-- SNES tile conversion;
-- palette conversion;
+- SNES tile and palette conversion;
 - animation frame extraction/import;
 - animation path metadata inspection.
 
-The SNES UI can then expose richer sprite/tile tools while retaining Mario Paint's mouse-oriented interaction.
+Then the SNES UI can expose richer sprite/tile/animation tools while preserving Mario Paint's mouse-oriented interaction.
 
-## Phase 7 - Project data beyond Mario Paint
+## Phase 8 - Project data beyond original Mario Paint
 
-Introduce new, explicitly versioned data rather than overloading unknown original bytes.
+New project/game data should be explicitly versioned rather than hidden inside unknown original bytes.
 
 Candidate sections:
 
@@ -145,15 +169,13 @@ events/
 assets/
 ```
 
-A generic intermediate representation should sit between the editor and game-specific runtimes/exporters.
+A generic intermediate model may feed more than one controlled engine/exporter without pretending arbitrary commercial SNES games share compatible formats.
 
-This makes one editor frontend usable for more than one future engine without pretending that arbitrary commercial SNES games share data formats.
+## Phase 9 - Game runtime
 
-## Phase 8 - Game runtime
+Add a small 65C816 runtime consuming project data produced by the editor/host pipeline.
 
-Add a small 65C816 runtime that consumes project data generated by the editor/host tools.
-
-Initial scope should be intentionally small:
+Initial vertical slice:
 
 - tile map;
 - player actor;
@@ -161,39 +183,37 @@ Initial scope should be intentionally small:
 - collision flags;
 - simple triggers/events;
 - music selection;
-- transition between editor and play mode.
+- editor/play transition.
 
-Only after that vertical slice works should the runtime expand toward richer actor behavior or visual scripting.
+Only after that works should actor behavior or visual scripting expand.
 
 ## Storage strategy
 
-The original cartridge provides 32 KB SRAM, which is already densely used. New project data should not assume that the existing save can simply grow in place.
+Original Mario Paint has 32 KiB SRAM and uses it densely. Early work should keep the original SRAM format and treat the host as the durable project boundary.
 
-Development options, in increasing ambition:
+Practical progression:
 
-1. keep original SRAM format and export projects to a host;
-2. expanded SRAM for development builds;
-3. flashcart/modern external storage integration;
-4. host compilation of an edited project into a standalone ROM.
-
-The most practical early workflow is hybrid:
-
-```text
-Mario Paint editor / SRAM
-        -> host project tool
-        -> assembler/build
-        -> standalone .sfc
-```
+1. original SRAM -> host project;
+2. host project -> rebuilt original-compatible SRAM;
+3. optional expanded SRAM for development builds;
+4. host compilation into standalone ROMs;
+5. flashcart/modern external storage only where it adds real value.
 
 ## Branch discipline
 
-- `main`: upstream-compatible preservation baseline until a deliberate integration decision.
-- `research/linux-baseline`: Linux reproducibility + semantic documentation.
-- future reverse-engineering work: narrowly scoped `research/*` branches.
-- feature code only after its underlying format/routine is documented enough to validate.
+- `main`: preservation/upstream-compatible baseline until a deliberate integration decision;
+- `research/linux-baseline`: reproducibility and early semantic anchors;
+- `feat/save-codec-c`: host save codec work;
+- `research/music-tool-format`: read-side Music Tool mapping;
+- new feature branches only after their underlying format/routine is validated.
 
-Do not commit original ROM images or extracted copyrighted assets.
+Do not commit original ROM images, extracted copyrighted assets, or real `.srm` files.
 
-## Immediate gate
+## Immediate gates
 
-Before starting the C save codec or the first ROM modification, run `scripts/verify_linux_baseline.sh` on Bellota against the verified ROM. The next implementation phase should begin only after the new branch still passes the bit-perfect gate.
+Current next gates are:
+
+1. validate `tools/mpaint-music` against the real Mario Paint SRAM already produced on Bellota;
+2. validate it against all three extracted pre-composed Music Tool song blobs;
+3. use controlled in-game edits to isolate any fields that differ from the static model;
+4. separately load the host-rebuilt `.srm` in Mario Paint to close runtime save compatibility.

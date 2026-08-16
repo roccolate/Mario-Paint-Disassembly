@@ -52,6 +52,10 @@ int main(void)
     assert(mpaint_music_sample_index(0) == 0x0D);
     assert(mpaint_music_sample_index(14) == 0x0A);
     assert(mpaint_music_sample_index(15) == 0xFF);
+    assert(mpaint_music_spc_voice(0) == 5);
+    assert(mpaint_music_spc_voice(1) == 6);
+    assert(mpaint_music_spc_voice(2) == 7);
+    assert(mpaint_music_spc_voice(3) == 0xFF);
 
     e = mpaint_music_decode_event(UINT16_C(0x0205));
     assert(!e.empty);

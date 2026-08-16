@@ -64,6 +64,14 @@ uint8_t mpaint_music_sample_index(uint8_t instrument)
     return music_tool_sample_index[instrument];
 }
 
+uint8_t mpaint_music_spc_voice(unsigned slot)
+{
+    if (slot >= MPAINT_MUSIC_SLOTS_PER_STEP) {
+        return UINT8_C(0xFF);
+    }
+    return (uint8_t)(5u + slot);
+}
+
 MpaintMusicEvent mpaint_music_decode_event(uint16_t raw)
 {
     MpaintMusicEvent event;
@@ -275,8 +283,8 @@ void mpaint_music_print_events(FILE *out, const uint8_t blob[MPAINT_MUSIC_BLOB_S
             }
             (void)fprintf(out,
                 "step=%02u slot=%u active=%s raw=0x%04" PRIX16
-                " instrument=%u sample=0x%02X pitch=%u flags=0x%02X highlight=%s command=0x%02X\n",
-                step, slot, active_step ? "yes" : "no", e.raw,
+                " voice=%u instrument=%u sample=0x%02X pitch=%u flags=0x%02X highlight=%s command=0x%02X\n",
+                step, slot, active_step ? "yes" : "no", e.raw, (unsigned)mpaint_music_spc_voice(slot),
                 (unsigned)e.instrument, (unsigned)e.sample_index, (unsigned)e.pitch,
                 (unsigned)e.flags, e.highlight ? "yes" : "no", (unsigned)e.command);
         }
@@ -289,7 +297,7 @@ void mpaint_music_print_csv(FILE *out, const uint8_t blob[MPAINT_MUSIC_BLOB_SIZE
     unsigned step;
     unsigned slot;
 
-    (void)fprintf(out, "step,slot,active,raw,instrument,sample,pitch,flags,highlight,command\n");
+    (void)fprintf(out, "step,slot,voice,active,raw,instrument,sample,pitch,flags,highlight,command\n");
     for (step = 0; step < MPAINT_MUSIC_MAX_STEPS; step++) {
         bool active_step = !s.song_end_valid || step < s.step_count;
 
@@ -298,8 +306,8 @@ void mpaint_music_print_csv(FILE *out, const uint8_t blob[MPAINT_MUSIC_BLOB_SIZE
             if (e.empty) {
                 continue;
             }
-            (void)fprintf(out, "%u,%u,%u,%04" PRIX16 ",%u,%02X,%u,%02X,%u,%02X\n",
-                step, slot, active_step ? 1u : 0u, e.raw,
+            (void)fprintf(out, "%u,%u,%u,%u,%04" PRIX16 ",%u,%02X,%u,%02X,%u,%02X\n",
+                step, slot, (unsigned)mpaint_music_spc_voice(slot), active_step ? 1u : 0u, e.raw,
                 (unsigned)e.instrument, (unsigned)e.sample_index, (unsigned)e.pitch,
                 (unsigned)e.flags, e.highlight ? 1u : 0u, (unsigned)e.command);
         }
